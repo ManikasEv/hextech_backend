@@ -128,5 +128,20 @@ app.delete('/api/projects/:id', async (req, res) => {
 // Health
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
 
+// Root welcome
+app.get('/', (_, res) => {
+    res.json({
+        message: 'Hello! Welcome to the Hextech API.',
+        endpoints: [
+            'GET  /api/projects',
+            'GET  /api/projects/:id',
+            'POST /api/projects',
+            'PUT  /api/projects/:id',
+            'DELETE /api/projects/:id',
+            'GET  /api/health',
+        ],
+    });
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`API server running on http://localhost:${PORT}`));
