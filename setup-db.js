@@ -1,36 +1,43 @@
 require('dotenv').config();
 const { neon } = require('@neondatabase/serverless');
+const fs = require('fs');
+const path = require('path');
 
 const sql = neon(process.env.DATABASE_URL);
 
-async function setup() {
-    console.log('Creating projects table...');
+function imgToBase64(filename) {
+    const filePath = path.join(__dirname, '../src/assets', filename);
+    if (!fs.existsSync(filePath)) return null;
+    const buf = fs.readFileSync(filePath);
+    const ext = path.extname(filename).replace('.', '');
+    const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+    return `data:${mime};base64,${buf.toString('base64')}`;
+}
 
+async function setup() {
+    console.log('Updating projects table schema...');
+
+    // Add image_data column for base64 if not exists
     await sql`
-        CREATE TABLE IF NOT EXISTS projects (
-            id          SERIAL PRIMARY KEY,
-            title       VARCHAR(255) NOT NULL,
-            description TEXT NOT NULL,
-            type        VARCHAR(50) NOT NULL CHECK (type IN ('Website', 'Software')),
-            image_url   TEXT,
-            link        TEXT,
-            sort_order  INTEGER DEFAULT 0,
-            created_at  TIMESTAMPTZ DEFAULT NOW()
-        )
+        ALTER TABLE projects
+        ADD COLUMN IF NOT EXISTS image_data TEXT
     `;
 
-    console.log('Seeding projects...');
-
-    // Clear existing and re-seed
+    console.log('Seeding projects with real images...');
     await sql`DELETE FROM projects`;
 
+    const portfolioImg  = imgToBase64('portfoliomani.png');
+    const ioInsideImg   = imgToBase64('ioinside.png');
+    const papageImg     = imgToBase64('projecpapa.png');
+
     await sql`
-        INSERT INTO projects (title, description, type, image_url, link, sort_order) VALUES
+        INSERT INTO projects (title, description, type, image_url, image_data, link, sort_order) VALUES
         (
             'Portfolio',
             'Personal portfolio website showcasing creative work, projects, and professional achievements with modern design.',
             'Website',
-            'https://portfoliomani.hextech.local',
+            'https://www.manikasevangelos.com/',
+            ${portfolioImg},
             'https://www.manikasevangelos.com/',
             1
         ),
@@ -39,14 +46,16 @@ async function setup() {
             'Portfolio website for a professional musician — showcasing discography, events, and press kit.',
             'Website',
             'https://images.unsplash.com/photo-1511379938547-c1f69419868d?q=80&w=800&auto=format&fit=crop',
-            NULL,
+            ${null},
+            null,
             2
         ),
         (
             'Inside Observation',
             'Professional website dedicated to energy therapies, holistic wellness, and spiritual healing services.',
             'Website',
-            'https://ioinside.hextech.local',
+            'https://insideobservation.com/',
+            ${ioInsideImg},
             'https://insideobservation.com/',
             3
         ),
@@ -55,7 +64,8 @@ async function setup() {
             'Advanced AI-powered software solution built with Flowise for intelligent automation and workflows.',
             'Software',
             'https://images.unsplash.com/photo-1677442136019-21780ecad995?q=80&w=800&auto=format&fit=crop',
-            NULL,
+            ${null},
+            null,
             4
         ),
         (
@@ -63,20 +73,22 @@ async function setup() {
             'Comprehensive software for managing bookings and sending automated invitations to clients.',
             'Software',
             'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?q=80&w=800&auto=format&fit=crop',
-            NULL,
+            ${null},
+            null,
             5
         ),
         (
             'Papageorgiou Fugen',
             'Professional business website delivering quality services and solutions.',
             'Website',
-            'https://projecpapa.hextech.local',
+            'https://papageorgiou-fugen.ch/',
+            ${papageImg},
             'https://papageorgiou-fugen.ch/',
             6
         )
     `;
 
-    console.log('Done! Projects table ready.');
+    console.log('Done! Projects seeded with images.');
     process.exit(0);
 }
 
