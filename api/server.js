@@ -213,7 +213,7 @@ app.get('/api/testimonials/all', async (req, res) => {
 app.get('/api/testimonials', async (req, res) => {
     try {
         const rows = await sql`
-            SELECT id, name, company, rating, message, created_at
+            SELECT id, name, company, rating, message, photo, created_at
             FROM testimonials
             WHERE approved = true
             ORDER BY created_at DESC
@@ -224,7 +224,7 @@ app.get('/api/testimonials', async (req, res) => {
     }
 });
 
-app.post('/api/testimonials', async (req, res) => {
+app.post('/api/testimonials', upload.single('photo'), async (req, res) => {
     try {
         const { name, company, rating, message } = req.body;
         if (!name || !rating || !message) {
@@ -232,11 +232,12 @@ app.post('/api/testimonials', async (req, res) => {
         }
         const r = parseInt(rating);
         if (r < 1 || r > 5) return res.status(400).json({ error: 'rating must be 1-5' });
+        const photo = req.file ? fileToBase64(req.file) : null;
 
         const [created] = await sql`
-            INSERT INTO testimonials (name, company, rating, message)
-            VALUES (${name.trim()}, ${company?.trim() || null}, ${r}, ${message.trim()})
-            RETURNING id, name, company, rating, message, created_at
+            INSERT INTO testimonials (name, company, rating, message, photo)
+            VALUES (${name.trim()}, ${company?.trim() || null}, ${r}, ${message.trim()}, ${photo})
+            RETURNING id, name, company, rating, message, photo, created_at
         `;
         res.status(201).json(created);
     } catch (err) {
