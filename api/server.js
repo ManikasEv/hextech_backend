@@ -48,6 +48,7 @@ app.get('/', (_, res) => {
     .post { background: #00ff8822; color: #00ff88; }
     .put  { background: #ffaa0022; color: #ffaa00; }
     .del  { background: #ff444422; color: #ff6666; }
+    .patch { background: #aa44ff22; color: #cc88ff; }
     .path { color: #ffffffcc; }
     .status { margin-top: 2rem; font-size: 0.75rem; color: #ffffff44; }
     .dot { display: inline-block; width: 8px; height: 8px; background: #00ff88; border-radius: 50%; margin-right: 6px; animation: pulse 2s infinite; }
@@ -67,6 +68,11 @@ app.get('/', (_, res) => {
       <div class="endpoint"><span class="method put">PUT</span><span class="path">/api/projects/:id</span></div>
       <div class="endpoint"><span class="method del">DELETE</span><span class="path">/api/projects/:id</span></div>
       <div class="endpoint"><span class="method get">GET</span><span class="path">/api/health</span></div>
+      <div class="endpoint"><span class="method get">GET</span><span class="path">/api/reviews</span></div>
+      <div class="endpoint"><span class="method get">GET</span><span class="path">/api/testimonials</span></div>
+      <div class="endpoint"><span class="method post">POST</span><span class="path">/api/testimonials</span></div>
+      <div class="endpoint"><span class="method get">GET</span><span class="path">/api/testimonials/all</span></div>
+      <div class="endpoint"><span class="method patch">PATCH</span><span class="path">/api/testimonials/:id/approve</span></div>
     </div>
     <p class="status"><span class="dot"></span>All systems operational</p>
   </div>
@@ -154,6 +160,110 @@ app.delete('/api/projects/:id', async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: 'Failed to delete project' });
+    }
+});
+
+// ── Google Reviews (proxied — keeps API key server-side) ──────────────────────
+app.get('/api/reviews', async (req, res) => {
+    const placeId = process.env.GOOGLE_PLACE_ID;
+    const apiKey  = process.env.GOOGLE_API_KEY;
+
+    if (!placeId || !apiKey) {
+        return res.status(503).json({ error: 'Google Reviews not configured', reviews: [] });
+    }
+
+    try {
+        const url = `https://places.googleapis.com/v1/places/${placeId}`;
+        const response = await fetch(url, {
+            headers: {
+                'X-Goog-Api-Key': apiKey,
+                'X-Goog-FieldMask': 'id,displayName,rating,userRatingCount,reviews',
+            },
+        });
+        if (!response.ok) {
+            const err = await response.text();
+            console.error('[Google Places]', response.status, err);
+            return res.status(502).json({ error: 'Google API error', reviews: [] });
+        }
+        const data = await response.json();
+        const reviews = (data.reviews || []).map(r => ({
+            author:  r.authorAttribution?.displayName || 'Anonymous',
+            avatar:  r.authorAttribution?.photoUri    || null,
+            rating:  r.rating,
+            text:    r.text?.text || '',
+            time:    r.relativePublishTimeDescription || '',
+        }));
+        res.json({ rating: data.rating, total: data.userRatingCount, reviews });
+    } catch (err) {
+        console.error('[Google Reviews]', err);
+        res.status(500).json({ error: 'Failed to fetch reviews', reviews: [] });
+    }
+});
+
+// ── Testimonials ──────────────────────────────────────────────────────────────
+app.get('/api/testimonials/all', async (req, res) => {
+    try {
+        const rows = await sql`SELECT * FROM testimonials ORDER BY created_at DESC`;
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to fetch testimonials' });
+    }
+});
+
+app.get('/api/testimonials', async (req, res) => {
+    try {
+        const rows = await sql`
+            SELECT id, name, company, rating, message, created_at
+            FROM testimonials
+            WHERE approved = true
+            ORDER BY created_at DESC
+        `;
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to fetch testimonials' });
+    }
+});
+
+app.post('/api/testimonials', async (req, res) => {
+    try {
+        const { name, company, rating, message } = req.body;
+        if (!name || !rating || !message) {
+            return res.status(400).json({ error: 'name, rating and message are required' });
+        }
+        const r = parseInt(rating);
+        if (r < 1 || r > 5) return res.status(400).json({ error: 'rating must be 1-5' });
+
+        const [created] = await sql`
+            INSERT INTO testimonials (name, company, rating, message)
+            VALUES (${name.trim()}, ${company?.trim() || null}, ${r}, ${message.trim()})
+            RETURNING id, name, company, rating, message, created_at
+        `;
+        res.status(201).json(created);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to save testimonial' });
+    }
+});
+
+// ── Testimonials admin (approve/delete) ───────────────────────────────────────
+app.patch('/api/testimonials/:id/approve', async (req, res) => {
+    try {
+        const [row] = await sql`
+            UPDATE testimonials SET approved = true WHERE id = ${req.params.id} RETURNING *
+        `;
+        if (!row) return res.status(404).json({ error: 'Not found' });
+        res.json(row);
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to approve' });
+    }
+});
+
+app.delete('/api/testimonials/:id', async (req, res) => {
+    try {
+        await sql`DELETE FROM testimonials WHERE id = ${req.params.id}`;
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to delete' });
     }
 });
 
