@@ -213,7 +213,7 @@ app.get('/api/testimonials/all', async (req, res) => {
 app.get('/api/testimonials', async (req, res) => {
     try {
         const rows = await sql`
-            SELECT id, name, company, rating, message, photo, created_at
+            SELECT id, name, company, email, rating, message, photo, created_at
             FROM testimonials
             WHERE approved = true
             ORDER BY created_at DESC
@@ -226,7 +226,7 @@ app.get('/api/testimonials', async (req, res) => {
 
 app.post('/api/testimonials', upload.single('photo'), async (req, res) => {
     try {
-        const { name, company, rating, message } = req.body;
+        const { name, company, email, rating, message } = req.body;
         if (!name || !rating || !message) {
             return res.status(400).json({ error: 'name, rating and message are required' });
         }
@@ -235,9 +235,9 @@ app.post('/api/testimonials', upload.single('photo'), async (req, res) => {
         const photo = req.file ? fileToBase64(req.file) : null;
 
         const [created] = await sql`
-            INSERT INTO testimonials (name, company, rating, message, photo)
-            VALUES (${name.trim()}, ${company?.trim() || null}, ${r}, ${message.trim()}, ${photo})
-            RETURNING id, name, company, rating, message, photo, created_at
+            INSERT INTO testimonials (name, company, email, rating, message, photo)
+            VALUES (${name.trim()}, ${company?.trim() || null}, ${email?.trim() || null}, ${r}, ${message.trim()}, ${photo})
+            RETURNING id, name, company, email, rating, message, photo, created_at
         `;
         res.status(201).json(created);
     } catch (err) {
